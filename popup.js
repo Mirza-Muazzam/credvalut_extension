@@ -10,7 +10,7 @@
 
 // document.addEventListener('DOMContentLoaded', () => {
 //     checkAuth();
-    
+
 //     const loginForm = document.getElementById('login-form');
 //     if (loginForm) {
 //         loginForm.addEventListener('submit', (e) => {
@@ -218,12 +218,12 @@
 
 
 
-const BASE_URL = 'http://172.172.172.72:8000/api'; 
+const BASE_URL = 'http://172.172.172.72:8000/api';
 const LIMIT = 10;
 
 let currentOffset = 0;
 let currentSearch = "";
-let activeSearchParam = "name"; 
+let activeSearchParam = "name";
 let isFetching = false;
 let hasMore = true;
 let debounceTimer;
@@ -231,7 +231,7 @@ let tempEmail = ""; // Stores email during 2FA step
 
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
-    
+
     // Auth Form Listeners
     document.getElementById('login-form').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -325,8 +325,8 @@ async function checkAuth() {
         showMainSection();
         document.getElementById('user-fullname').innerText = `Hi, ${data.firstName || 'User'}`;
         fetchPortals();
-    } else { 
-        showAuthSection(); 
+    } else {
+        showAuthSection();
     }
 }
 
@@ -334,8 +334,8 @@ async function checkAuth() {
 
 function resetAndSearch() {
     currentOffset = 0; hasMore = true; isFetching = false;
-    activeSearchParam = "name"; 
-    document.getElementById('site-list').innerHTML = ''; 
+    activeSearchParam = "name";
+    document.getElementById('site-list').innerHTML = '';
     fetchPortals();
 }
 
@@ -393,65 +393,144 @@ function renderPortals(portals) {
     });
 }
 
+// async function handleProcess(siteId, buttonEl) {
+//     const { access } = await chrome.storage.local.get('access');
+//     const originalText = "Login";
+//     const detailsArea = document.getElementById(`details-${siteId}`);
+//     buttonEl.disabled = true;
+//     buttonEl.innerHTML = '<span class="spinner"></span>';
+
+//     const tryTrack = async () => {
+//         try {
+//             const response = await fetch(`${BASE_URL}/track/`, {
+//                 method: 'POST',
+//                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access}` },
+//                 body: JSON.stringify({ site_id: siteId })
+//             });
+//             const data = await response.json();
+//             if (!response.ok) { alert(data.error || "Denied"); buttonEl.disabled = false; buttonEl.innerText = originalText; return; }
+
+//             if (data.status === "busy") {
+//                 let msgEl = detailsArea.querySelector('.busy-info');
+//                 if (!msgEl) { msgEl = document.createElement('span'); msgEl.className = 'busy-info'; detailsArea.prepend(msgEl); }
+//                 msgEl.innerText = data.message;
+//                 buttonEl.innerHTML = `<span class="spinner"></span> <span style="font-size:9px">Wait</span>`;
+//                 setTimeout(tryTrack, data.retry_after * 1000);
+//             }
+//             else if (data.url) {
+//                 const msgEl = detailsArea.querySelector('.busy-info');
+//                 if (msgEl) msgEl.remove();
+//                 data.site_id = siteId;
+//                 chrome.runtime.sendMessage({ action: "startAutoLogin", data: data }, (res) => {
+//                     buttonEl.disabled = false;
+//                     buttonEl.innerText = originalText;
+//                     if (res && res.status === "auth_error") {
+//                         alert(`Portal Error: ${res.message}`);
+//                     }
+//                 });
+//             }
+//         } catch (e) { buttonEl.disabled = false; buttonEl.innerText = originalText; }
+//     };
+//     tryTrack();
+// }
+
+
+
+
+
+
+
+
+
 async function handleProcess(siteId, buttonEl) {
     const { access } = await chrome.storage.local.get('access');
     const originalText = "Login";
     const detailsArea = document.getElementById(`details-${siteId}`);
+
     buttonEl.disabled = true;
     buttonEl.innerHTML = '<span class="spinner"></span>';
 
     const tryTrack = async () => {
         try {
-            const response = await fetch(`${BASE_URL}/track/`, {
+            const response = await fetch(`${BASE_URL}/track/`, { // Removed potential extra slash
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access}` },
                 body: JSON.stringify({ site_id: siteId })
             });
+
             const data = await response.json();
-            if (!response.ok) { alert(data.error || "Denied"); buttonEl.disabled = false; buttonEl.innerText = originalText; return; }
+
+            if (!response.ok) {
+                alert(data.error || "Access Denied");
+                buttonEl.disabled = false;
+                buttonEl.innerText = originalText;
+                return;
+            }
 
             if (data.status === "busy") {
                 let msgEl = detailsArea.querySelector('.busy-info');
-                if (!msgEl) { msgEl = document.createElement('span'); msgEl.className = 'busy-info'; detailsArea.prepend(msgEl); }
+                if (!msgEl) {
+                    msgEl = document.createElement('span');
+                    msgEl.className = 'busy-info';
+                    detailsArea.prepend(msgEl);
+                }
                 msgEl.innerText = data.message;
                 buttonEl.innerHTML = `<span class="spinner"></span> <span style="font-size:9px">Wait</span>`;
                 setTimeout(tryTrack, data.retry_after * 1000);
-            } 
+            }
             else if (data.url) {
                 const msgEl = detailsArea.querySelector('.busy-info');
                 if (msgEl) msgEl.remove();
-                data.site_id = siteId; 
+                data.site_id = siteId;
+
+                // sendMessage to background script
                 chrome.runtime.sendMessage({ action: "startAutoLogin", data: data }, (res) => {
+                    // Reset UI
                     buttonEl.disabled = false;
                     buttonEl.innerText = originalText;
+
+                    // SHOW THE ERROR CAPTURED BY BACKGROUND SCRIPT
+                    if (res && res.status === "auth_error") {
+                        alert(`Login Failed: ${res.message}`);
+                    }
                 });
             }
-        } catch (e) { buttonEl.disabled = false; buttonEl.innerText = originalText; }
+        } catch (e) {
+            buttonEl.disabled = false;
+            buttonEl.innerText = originalText;
+        }
     };
     tryTrack();
 }
 
+
+
+
+
+
+
+
 // --- UI Toggle Helpers ---
 
-function showMainSection() { 
-    document.getElementById('auth-section').style.display = 'none'; 
-    document.getElementById('otp-section').style.display = 'none'; 
-    document.getElementById('main-section').style.display = 'flex'; 
-    document.getElementById('logout-btn').style.display = 'flex'; 
+function showMainSection() {
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('otp-section').style.display = 'none';
+    document.getElementById('main-section').style.display = 'flex';
+    document.getElementById('logout-btn').style.display = 'flex';
 }
 
-function showAuthSection() { 
-    document.getElementById('auth-section').style.display = 'flex'; 
-    document.getElementById('otp-section').style.display = 'none'; 
-    document.getElementById('main-section').style.display = 'none'; 
-    document.getElementById('logout-btn').style.display = 'none'; 
+function showAuthSection() {
+    document.getElementById('auth-section').style.display = 'flex';
+    document.getElementById('otp-section').style.display = 'none';
+    document.getElementById('main-section').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
 }
 
 function showOTPSection() {
-    document.getElementById('auth-section').style.display = 'none'; 
-    document.getElementById('otp-section').style.display = 'flex'; 
-    document.getElementById('main-section').style.display = 'none'; 
-    document.getElementById('logout-btn').style.display = 'none'; 
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('otp-section').style.display = 'flex';
+    document.getElementById('main-section').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
 }
 
 function logout() { chrome.storage.local.clear(() => location.reload()); }
