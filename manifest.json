@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "CredVault",
+  "version": "1.0",
+  "permissions": ["storage", "scripting", "activeTab", "tabs", "sidePanel"],
+  "host_permissions": [
+    "http://172.172.172.72:8000/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "action": {
+    "default_title": "Open CredVault",
+    "default_icon": "logo.png"
+  }
+}

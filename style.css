@@ -1,0 +1,55 @@
+:root {
+  --primary: #4f46e5;
+  --bg: #ffffff;
+  --text: #0f172a;
+  --border: #e2e8f0;
+}
+
+body { width: 320px; font-family: sans-serif; padding: 15px; margin: 0; }
+input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; }
+button { width: 100%; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; }
+.header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px; }
+.logout-link { width: auto; background: none; color: red; font-size: 12px; }
+.site-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
+.site-item span { font-weight: 600; font-size: 13px; }
+.action-btn { width: auto; padding: 5px 12px; font-size: 12px; }
+.error { color: red; font-size: 11px; }
+.search-container { margin-bottom: 10px; }
+
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ffffff;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: rotation 1s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.action-btn:disabled {
+  background: #6366f1;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* Optional: styling for the busy message */
+.busy-info {
+  font-size: 10px;
+  color: #f97316; /* Orange/Warning color */
+  margin-bottom: 4px;
+  font-weight: 600;
+  display: block;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

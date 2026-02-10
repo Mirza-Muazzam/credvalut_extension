@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      box-sizing: border-box;
+      padding: 15px;
+      background: #ffffff;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      flex-shrink: 0;
+    }
+
+    .header-left,
+    .header-right {
+      display: flex;
+      align-items: center;
+      min-width: 60px;
+    }
+
+    .header-right {
+      justify-content: flex-end;
+    }
+
+    #user-fullname {
+      font-weight: bold;
+      color: #4f46e5;
+      font-size: 14px;
+      text-align: center;
+      flex: 1;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px;
+    }
+
+    .icon-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    #logout-btn {
+      color: #ef4444;
+      display: none;
+    }
+
+    #logout-btn span {
+      font-size: 12px;
+      font-weight: 600;
+      margin-right: 2px;
+    }
+
+    /* Sections */
+    #auth-section,
+    #otp-section,
+    #main-section {
+      display: none;
+      flex-direction: column;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    #site-list {
+      height: 520px;
+      width: 100%;
+      overflow-y: auto;
+      margin-top: 10px;
+      border: 1px solid #f1f5f9;
+      border-radius: 8px;
+    }
+
+    .site-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      margin-bottom: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+    }
+
+    .site-details {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .site-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 0;
+    }
+
+    .site-practice {
+      font-size: 11px;
+      color: #4f46e5;
+      margin: 2px 0 0 0;
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .action-btn {
+      background: #4f46e5;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+
+    .loading-status {
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      padding: 10px;
+    }
+
+    .error-msg {
+      color: #ef4444;
+      font-size: 12px;
+      margin-top: 5px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-left">
+        <button id="refresh-btn" class="icon-btn" title="Refresh">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+          </svg>
+        </button>
+      </div>
+      <span id="user-fullname">CredVault</span>
+      <div class="header-right">
+        <button id="logout-btn" class="icon-btn">
+          <span>Logout</span>
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 1. LOGIN FORM -->
+    <div id="auth-section">
+      <h3 style="margin-bottom: 15px;">Login</h3>
+      <form id="login-form">
+        <input type="email" id="email" placeholder="Email" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit"
+          style="width:100%; padding:12px; background:#4f46e5; color:white; border:none; border-radius:6px; cursor:pointer;">Login</button>
+      </form>
+      <p id="auth-error" class="error-msg"></p>
+    </div>
+
+    <!-- 2. OTP VERIFICATION FORM -->
+    <div id="otp-section">
+      <h3 style="margin-bottom: 10px;">Two-Factor Auth</h3>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 15px;">Please enter the 6-digit code sent to your email.
+      </p>
+      <form id="otp-form">
+        <input type="text" id="otp-code" placeholder="Enter 6-digit code" maxlength="6" required>
+        <button type="submit"
+          style="width:100%; padding:12px; background:#4f46e5; color:white; border:none; border-radius:6px; cursor:pointer;">Verify
+          & Login</button>
+        <button type="button" id="back-to-login"
+          style="width:100%; background:none; border:none; color:#4f46e5; margin-top:10px; cursor:pointer; font-size:12px;">Back
+          to Login</button>
+      </form>
+      <p id="otp-error" class="error-msg"></p>
+    </div>
+
+    <!-- 3. MAIN PORTAL LIST -->
+    <div id="main-section">
+      <input type="text" id="site-search" placeholder="Search portals...">
+      <div id="site-list"></div>
+      <div id="load-more-indicator" class="loading-status" style="display:none;">Loading...</div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
