@@ -282,10 +282,6 @@
 
 
 
-
-
-
-// background.js
 // background.js
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -302,27 +298,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (tabId === newTab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(initialLoadListener);
           
+          // 1. FILL CREDENTIALS & CAPTURE XPATH ERRORS
           chrome.scripting.executeScript({
             target: { tabId: newTab.id },
             func: performCredentialFill,
             args: [siteData]
-          }).then(async () => {
-            console.log(`[MONITORING] Tab ${newTab.id}: Monitoring for 2FA or Errors...`);
+          }).then(async (results) => {
+            const fillResult = results[0].result;
 
-            // THE LOOP
+            // Check if performCredentialFill returned an element error
+            if (fillResult && fillResult.status === "error") {
+                console.log(`[ELEMENT ERROR] ${fillResult.step}: ${fillResult.message}`);
+                
+                // Report specific XPath failure to server
+                reportErrorToServer(siteData.site_id, fillResult.step, fillResult.message);
+                
+                // Stop process and notify popup
+                sendResponse({status: "auth_error", message: fillResult.message});
+                return;
+            }
+
+            // 2. IF FILL SUCCESS: PROCEED TO MONITOR FOR 2FA OR INVALID CREDENTIALS
+            console.log(`[MONITORING] Tab ${newTab.id}: Monitoring for 2FA or Auth Errors...`);
             const result = await runDetectionLoop(newTab.id, siteData.otp_xpath);
 
             if (result.type === "otp") {
-              console.log("[RESULT] 2FA detected.");
               start2FAStream(newTab.id, siteData, sendResponse);
             } 
             else if (result.type === "error") {
-              console.log("[RESULT] Error detected:", result.message);
-              reportErrorToServer(siteData.site_id, result.message);
+              // Report invalid credentials/toast errors to server
+              reportErrorToServer(siteData.site_id, "AUTH_FAILURE", result.message);
               sendResponse({status: "auth_error", message: result.message});
             } 
             else {
-              console.log("[RESULT] No 2FA or error seen. Closing process.");
               sendResponse({status: "success", info: "direct_login"});
             }
           });
@@ -334,6 +342,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// --- UPDATED REPORTING FUNCTION ---
+async function reportErrorToServer(siteId, failedStep, errorMsg) {
+  const storage = await chrome.storage.local.get('access');
+  const payload = { 
+    site_id: siteId, 
+    failed_step: failedStep, 
+    error_message: errorMsg 
+  };
+  
+  fetch(`http://172.172.172.72:8000/api/report-error/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${storage.access}` },
+    body: JSON.stringify(payload)
+  }).catch(e => console.error("Report failed", e));
+}
+
+// --- UPDATED FILL FUNCTION: Returns error if XPaths fail ---
+async function performCredentialFill(sData) {
+  const getByXpath = (path) => document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  
+  // 1. Find Username
+  let u = null;
+  for (let i = 0; i < 15; i++) {
+    u = getByXpath(sData.username_xpath);
+    if (u) break;
+    await sleep(500);
+  }
+  if (!u) return { status: "error", step: "USERNAME_XPATH", message: `Username xpath not found: ${sData.username_xpath}` };
+
+  // 2. Find Password
+  let p = null;
+  for (let i = 0; i < 10; i++) {
+    p = getByXpath(sData.password_xpath);
+    if (p) break;
+    await sleep(500);
+  }
+  if (!p) return { status: "error", step: "PASSWORD_XPATH", message: `Password xpath not found: ${sData.password_xpath}` };
+
+  // 3. Fill Data
+  u.focus(); u.value = sData.site_username; u.dispatchEvent(new Event('input', { bubbles: true }));
+  u.dispatchEvent(new Event('change', { bubbles: true }));
+  await sleep(500);
+  p.focus(); p.value = sData.password; p.dispatchEvent(new Event('input', { bubbles: true }));
+  p.dispatchEvent(new Event('change', { bubbles: true }));
+  await sleep(500);
+
+  // 4. Find & Click Login Button
+  const btn = getByXpath(sData.login_button_xpath);
+  if (!btn) return { status: "error", step: "LOGIN_BUTTON", message: `Login button xpath not found: ${sData.login_button_xpath}` };
+  
+  btn.click();
+  return { status: "success" };
+}
+
+// --- DETECTION LOOP (Unchanged logic) ---
 async function runDetectionLoop(tabId, otpXpath) {
     for (let i = 0; i < 20; i++) {
         try {
@@ -341,66 +405,37 @@ async function runDetectionLoop(tabId, otpXpath) {
                 target: { tabId: tabId },
                 func: (xpath) => {
                     const getByXpath = (path) => document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    
-                    // 1. Check for 2FA input
                     const otpField = getByXpath(xpath);
-                    if (otpField && (otpField.offsetWidth > 0 || otpField.offsetHeight > 0)) {
-                        return { type: "otp" };
+                    if (otpField && (otpField.offsetWidth > 0 || otpField.offsetHeight > 0)) return { type: "otp" };
+
+                    const keywords = ["incorrect", "invalid", "failed", "not recognized", "wrong", "error"];
+                    const alerts = document.querySelectorAll('[role="alert"], .toast, .alert, .error-msg');
+                    for (let a of alerts) {
+                        const txt = a.innerText.trim();
+                        if (txt.length > 2 && txt.length < 150 && keywords.some(k => txt.toLowerCase().includes(k))) 
+                            return { type: "error", message: txt };
                     }
-
-                    // 2. DYNAMIC ERROR SEARCH
-                    const errorKeywords = ["incorrect", "invalid", "failed", "not recognized", "wrong", "error", "mismatch"];
-                    
-                    // Look in all standard text containers
-                    const elements = document.querySelectorAll('div, span, p, label, b, h3, li');
-                    
-                    for (let el of elements) {
-                        const text = el.innerText.trim();
-                        // Only check visible elements with text that isn't too long
-                        if (el.offsetParent !== null && text.length > 5 && text.length < 150) {
-                            const lowerText = text.toLowerCase();
-                            
-                            // Check keywords
-                            const hasKeyword = errorKeywords.some(kw => lowerText.includes(kw));
-                            
-                            // Check "Error Indicators":
-                            // - Role is alert/message
-                            // - Class or ID contains "error", "alert", "warning", "fail"
-                            // - Color is Red-ish
+                    const allDivs = document.querySelectorAll('div, span, p');
+                    for (let el of allDivs) {
+                        if (el.offsetParent !== null && el.innerText.length > 2 && el.innerText.length < 100) {
                             const style = window.getComputedStyle(el);
-                            const isRed = style.color.includes('rgb(2') || style.color.includes('rgb(1'); // Catch shades of red/orange
-                            const isErrorUI = /error|alert|warning|fail/i.test(el.className + el.id);
-                            const isAria = el.getAttribute('role') === 'alert' || el.getAttribute('aria-live') === 'assertive';
-
-                            if (hasKeyword && (isRed || isErrorUI || isAria)) {
-                                return { type: "error", message: text };
-                            }
+                            const isRed = style.color.includes('rgb(2') || style.color.includes('rgb(1');
+                            if (isRed && keywords.some(k => el.innerText.toLowerCase().includes(k))) 
+                                return { type: "error", message: el.innerText.trim() };
                         }
                     }
                     return null;
                 },
                 args: [otpXpath]
             });
-
-            if (results && results[0].result) {
-                return results[0].result;
-            }
+            if (results && results[0].result) return results[0].result;
         } catch (e) { }
         await new Promise(r => setTimeout(r, 1000));
     }
     return { type: "none" };
 }
 
-async function reportErrorToServer(siteId, errorMsg) {
-  const storage = await chrome.storage.local.get('access');
-  fetch(`http://172.172.172.72:8000/api/report-error/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${storage.access}` },
-    body: JSON.stringify({ site_id: siteId, error_message: errorMsg })
-  }).catch(e => console.error("Report failed", e));
-}
-
-// STREAM & INJECTION (Remains same)
+// --- STREAM & OTP INJECTION (Unchanged logic) ---
 async function start2FAStream(tabId, siteData, doneCallback) {
   const storage = await chrome.storage.local.get('access');
   if (activeStreams.has(tabId)) activeStreams.get(tabId).close();
@@ -418,33 +453,12 @@ async function start2FAStream(tabId, siteData, doneCallback) {
   es.onerror = () => { es.close(); activeStreams.delete(tabId); if (doneCallback) doneCallback({status: "error"}); };
 }
 
-async function performCredentialFill(sData) {
-  const getByXpath = (path) => document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-  let u, p;
-  for (let i = 0; i < 15; i++) {
-    u = getByXpath(sData.username_xpath); p = getByXpath(sData.password_xpath);
-    if (u && p) break;
-    await new Promise(r => setTimeout(r, 500));
-  }
-  if (u && p) {
-    u.focus(); u.value = sData.site_username; u.dispatchEvent(new Event('input', { bubbles: true }));
-    u.dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 500));
-    p.focus(); p.value = sData.password; p.dispatchEvent(new Event('input', { bubbles: true }));
-    p.dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 500));
-    const btn = getByXpath(sData.login_button_xpath);
-    if (btn) btn.click();
-  }
-}
-
 async function injectOTPCode(sData, code) {
   const getByXpath = (path) => document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
   for (let i = 0; i < 30; i++) {
     const f = getByXpath(sData.otp_xpath);
     if (f) {
-      f.focus(); f.value = code;
-      f.dispatchEvent(new Event('input', { bubbles: true }));
+      f.focus(); f.value = code; f.dispatchEvent(new Event('input', { bubbles: true }));
       f.dispatchEvent(new Event('change', { bubbles: true }));
       setTimeout(() => { const b = getByXpath(sData.otp_submit_xpath); if (b) b.click(); }, 500);
       return;
